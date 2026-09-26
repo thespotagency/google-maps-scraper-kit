@@ -6,9 +6,16 @@
 services:
   google-maps-scraper:
     # Pinned to a known-good release for reproducibility (bump deliberately).
+    # NOTE: v1.15.0 was originally pinned here, but its bundled Playwright driver
+    # (1.57.0) is now 404 on every Playwright CDN mirror -- that pin is dead upstream
+    # and cannot install. Moved to :latest (2026-09-26) after confirming it actually
+    # scrapes successfully (v1.18.1's standalone binary hit a separate, still-open
+    # "unexpected page type" bug -- gosom/google-maps-scraper#322 -- but the current
+    # :latest Docker image does not reproduce it). Re-pin to a specific tag once
+    # a stable post-fix release is out.
     # The published image is linux/amd64. On Apple Silicon (M1/M2/M3) it runs under
     # emulation; if it won't start, UNCOMMENT the 'platform' line below.
-    image: gosom/google-maps-scraper:v1.15.0
+    image: gosom/google-maps-scraper:latest
     # platform: linux/amd64
     container_name: gmaps-scraper
     restart: unless-stopped

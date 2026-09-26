@@ -8,6 +8,13 @@ A Docker-based local deployment of the open-source `gosom/google-maps-scraper`, 
 at **`http://localhost:8080`**, plus a skill that teaches you to use it. It scrapes **Google Maps
 business listings only** (not social media).
 
+> ⚠️ **Image tag matters.** `docker-compose.yml` runs `gosom/google-maps-scraper:latest`, not a
+> pinned version. The previously-pinned `v1.15.0` is permanently broken (its Playwright driver
+> 1.57.0 is 404 on every CDN mirror — dead upstream, not fixable locally), and the standalone
+> Windows binary (v1.16.0-v1.18.1) either hits that same dead-driver 404 or a separate open bug,
+> "unexpected page type" (gosom/google-maps-scraper#322). `:latest` was verified working
+> 2026-09-26. Do not "fix" this by re-pinning to an older tag or switching to the standalone binary.
+
 ## When the user asks to scrape businesses / get a list of places / lead-gen data
 **Load and follow the `google-maps-scraper` skill** (`.claude/skills/google-maps-scraper/SKILL.md`).
 It has the exact API flow, the required fields, and the best-practice + safety rules. Don't improvise
@@ -34,9 +41,19 @@ abusive use (surveilling individuals, spam). Full guidance is in the skill.
 - Before a big job (high depth / many keywords), **confirm with the user** — cost is time + IP-block risk.
 - Scraped emails/phones are **personal data**; don't dump huge CSVs into chat — summarize + save to disk.
 
+## Cross-run lead registry (dedup)
+`scripts/scrape.py` automatically dedupes against a persistent SQLite registry
+(`bin/data/leads_registry.db`, keyed by Google Maps `place_id`) — every business it has ever
+returned is remembered, and a re-scrape only returns genuinely new businesses (prints a summary:
+scraped/already-known/new). This is ON by default; `--no-dedup` disables it for one run. If the
+user is calling the raw API directly (not via `scripts/scrape.py`), this dedup step is skipped —
+prefer the script, or run `python scripts/dedupe_import.py <file>` on the downloaded CSV yourself.
+To bulk-load a past export (e.g. a CRM export) as "already known" without re-scraping it: run
+`python scripts/dedupe_import.py <file> --seed`.
+
 ## Setup
-If the container isn't running: `docker compose up -d`, then verify `curl http://localhost:8080/api/v1/jobs`.
-Full setup is in `SETUP.md`.
+If the container isn't running: `docker compose up -d` (from the kit root), then verify
+`curl http://localhost:8080/api/v1/jobs`. Full setup is in `SETUP.md`.
 
 ## Attribution
 This wraps `gosom/google-maps-scraper` (MIT, © Georgios Komninos). Keep `CREDITS.md` + `LICENSE` intact.

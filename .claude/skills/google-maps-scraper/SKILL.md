@@ -8,16 +8,17 @@ description: Scrape Google Maps business listings (name, address, phone, website
 Drive the local Google Maps scraper API to turn a business-type + location into clean, structured rows.
 
 ## Mental model
-The scraper runs as a local Docker container exposing a REST API at `http://localhost:8080` (no auth —
-localhost only). A "scrape" is an **async job**: you create it, poll until it's done, then download a CSV.
-One job can run many keywords. Each result has up to **34 fields**.
+The scraper runs as a local Docker container (image `gosom/google-maps-scraper:latest` — see
+CLAUDE.md for why it must stay on `:latest`, not a pinned version) exposing a REST API at
+`http://localhost:8080` (no auth — localhost only). A "scrape" is an **async job**: you create it,
+poll until it's done, then download a CSV. One job can run many keywords. Each result has up to
+**34 fields**.
 
 ## Step 0 — Make sure it's running
 ```bash
 curl -s http://localhost:8080/api/v1/jobs >/dev/null 2>&1 && echo UP || echo DOWN
 ```
-If `DOWN`: `docker compose up -d` (from the kit root), wait ~10s, retry. If Docker isn't installed, point
-the user to `SETUP.md`.
+If `DOWN`: `docker compose up -d` (from the kit root), wait ~10s, retry.
 
 ## Step 1 — Create a job  (`POST /api/v1/jobs`)
 **Required fields — the API returns `422` without them:**

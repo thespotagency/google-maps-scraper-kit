@@ -15,8 +15,16 @@ Notes:
 - Geocoding uses OpenStreetMap Nominatim (free, no key). Please be gentle: it allows ~1 request/sec
   and requires a descriptive User-Agent (set below). Don't loop it aggressively.
 """
-import argparse, csv, io, json, os, re, sys, time, urllib.request, urllib.parse, urllib.error
+import argparse, csv, io, json, os, re, sqlite3, sys, time, urllib.request, urllib.parse, urllib.error
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
+import dedupe_import as dedupe  # cross-run lead registry (same folder, stdlib-only)
+
+# Windows consoles default to cp1252, which can't print the ▶/✓/✗ characters below.
+# Force UTF-8 stdout/stderr so this runs cleanly regardless of the terminal's codepage.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
 
 BASE = os.environ.get("SCRAPER_BASE_URL", "http://localhost:8080")
 KEY = os.environ.get("SCRAPER_API_KEY", "")
@@ -144,6 +152,8 @@ def main():
     ap.add_argument("--fields", help="comma-separated columns to keep (overrides the default lead set)")
     ap.add_argument("--socials", action="store_true",
                     help="also find Instagram/Facebook/LinkedIn from each website (0 LLM tokens; slower)")
+    ap.add_argument("--no-dedup", dest="dedup", action="store_false", default=True,
+                    help="skip the cross-run lead registry (dedup is ON by default)")
     a = ap.parse_args()
 
     keywords = collect_keywords(a)
@@ -176,7 +186,7 @@ def main():
     try:
         req("GET", "/api/v1/jobs")
     except Exception as e:
-        sys.exit(f"✗ Scraper not reachable at {BASE} — run 'docker compose up -d' first.\n  ({e})")
+        sys.exit(f"✗ Scraper not reachable at {BASE} — run 'bin\\start-scraper.bat' first.\n  ({e})")
 
     body = {"name": "scrape-py", "keywords": keywords, "lang": "en", "zoom": 15,
             "lat": str(lat), "lon": str(lon), "fast_mode": False, "radius": 10000,
@@ -209,6 +219,39 @@ def main():
 
     _, raw = req("GET", f"/api/v1/jobs/{job_id}/download")
     rows = list(csv.DictReader(io.StringIO(raw.decode("utf-8", "replace"))))
+    scraped_count = len(rows)
+
+    if a.dedup and rows:
+        conn = sqlite3.connect(dedupe.DEFAULT_REGISTRY)
+        dedupe.ensure_schema(conn)
+        now = datetime.now(timezone.utc).isoformat()
+        kept, dup_n, seen_keys = [], 0, set()
+        for r in rows:
+            k = dedupe.make_key(r)
+            if k in seen_keys:
+                continue
+            seen_keys.add(k)
+            existing = conn.execute("SELECT key FROM leads WHERE key=?", (k,)).fetchone()
+            if existing:
+                dup_n += 1
+                conn.execute("UPDATE leads SET last_seen_at=?, times_seen=times_seen+1 WHERE key=?", (now, k))
+                continue
+            conn.execute(
+                """INSERT INTO leads (key, place_id, title, phone, website, email, category,
+                   address, first_scraped_at, last_seen_at, times_seen, status)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,1,'new')""",
+                (k, r.get("place_id", ""), r.get("title", ""), r.get("phone", ""),
+                 r.get("website", ""), r.get("emails", ""), r.get("category", ""),
+                 r.get("address", ""), now, now),
+            )
+            kept.append(r)
+        conn.commit(); conn.close()
+        print(f"▶ Registry: {scraped_count} scraped, {dup_n} already known (skipped), {len(kept)} new.")
+        rows = kept
+        if not rows:
+            print("✓ Nothing new this run — every business was already in the lead registry.")
+            return
+
     if a.full:
         fields = list(rows[0].keys()) if rows else LEAD
     elif a.fields:

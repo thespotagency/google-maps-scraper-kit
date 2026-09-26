@@ -15,4 +15,6 @@ Set up the Google Maps scraper on this computer:
    > start at `depth 5`, and add **proxies** for large or repeated runs. Scraping Maps is also against
    > Google's ToS — use responsibly and follow data laws (GDPR/CCPA) for any contact info.
 
-If a step fails, consult `SETUP.md` §6 (Troubleshooting).
+If a step fails, consult `SETUP.md` §6 (Troubleshooting). If Docker is running but jobs fail with a
+Playwright/driver download error, the image tag may have drifted back to a dead pinned version --
+`docker-compose.yml` must stay on `gosom/google-maps-scraper:latest` (see CLAUDE.md).
